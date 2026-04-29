@@ -1,0 +1,8 @@
+{
+  "name": "VSCode Recent Folders",
+  "description": "Shows VS Code recently opened folders in the right-click context menu of the dock icon",
+  "uuid": "vscode-recent-folders@amgad",
+  "shell-version": ["46"],
+  "version": 1,
+  "url": ""
+}
