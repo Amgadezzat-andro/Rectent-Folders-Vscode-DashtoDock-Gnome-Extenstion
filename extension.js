@@ -6,11 +6,11 @@
 
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 
 // Enable async/await for Gio.Subprocess
 Gio._promisify(Gio.Subprocess.prototype, 'communicate_utf8_async', 'communicate_utf8_finish');
-import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
-import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 
 // ── VS Code app IDs to recognise ─────────────────────────────────────────────
 const VSCODE_APP_IDS = [
