@@ -2,7 +2,7 @@
   "name": "VSCode Recent Folders",
   "description": "Shows VS Code recently opened folders in the right-click context menu of the dock icon",
   "uuid": "vscode-recent-folders@amgad",
-  "shell-version": ["45", "46", "47"],
+  "shell-version": ["46"],
   "settings-schema": "org.gnome.shell.extensions.vscode-recent-folders",
   "version": 1,
   "url": "https://github.com/Amgadezzat-andro/Rectent-Folders-Vscode-DashtoDock-Gnome-Extenstion"
