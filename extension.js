@@ -6,6 +6,9 @@
 
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
+
+// Enable async/await for Gio.Subprocess
+Gio._promisify(Gio.Subprocess.prototype, 'communicate_utf8_async', 'communicate_utf8_finish');
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 
@@ -19,6 +22,9 @@ const VSCODE_APP_IDS = [
 ];
 
 const PATCH_MARKER = Symbol('vscodeRecentFoldersPatch');
+
+// ── Folder cache (populated asynchronously) ───────────────────────────────────
+let _folderCache = [];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -42,7 +48,7 @@ function getDbPaths() {
     ];
 }
 
-function getRecentFolders(maxFolders) {
+async function fetchRecentFoldersAsync(maxFolders) {
     const python3 = GLib.find_program_in_path('python3') ?? '/usr/bin/python3';
     const pyScript = [
         'import sqlite3, sys',
@@ -57,16 +63,14 @@ function getRecentFolders(maxFolders) {
             const file = Gio.File.new_for_path(dbPath);
             if (!file.query_exists(null)) continue;
 
-            const [ok, stdout] = GLib.spawn_sync(
-                null,
+            const proc = Gio.Subprocess.new(
                 [python3, '-c', pyScript, dbPath],
-                null,
-                GLib.SpawnFlags.DEFAULT,
-                null
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE
             );
-            if (!ok || !stdout?.length) continue;
+            const [, stdout] = await proc.communicate_utf8_async(null, null);
+            if (!stdout?.length) continue;
 
-            const raw = new TextDecoder('utf-8').decode(stdout).trim();
+            const raw = stdout.trim();
             if (!raw) continue;
 
             const json = JSON.parse(raw);
@@ -109,11 +113,18 @@ function openInVSCode(folderPath, useOzoneX11) {
 function appendFoldersToMenu(menu, settings) {
     const maxFolders = settings.get_int('max-recent-folders');
     const useOzoneX11 = settings.get_boolean('use-ozone-x11');
-    const folders = getRecentFolders(maxFolders);
-    if (!folders.length) return;
-    menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Recent Folders'));
-    for (const { path, label } of folders)
-        menu.addAction(label, () => openInVSCode(path, useOzoneX11));
+
+    // Display cached folders immediately (no blocking)
+    if (_folderCache.length > 0) {
+        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Recent Folders'));
+        for (const { path, label } of _folderCache.slice(0, maxFolders))
+            menu.addAction(label, () => openInVSCode(path, useOzoneX11));
+    }
+
+    // Refresh cache asynchronously for next open
+    fetchRecentFoldersAsync(maxFolders).then(folders => {
+        _folderCache = folders;
+    }).catch(() => {});
 }
 
 function patchPopupOpen(settings) {
@@ -142,10 +153,16 @@ function unpatchPopupOpen() {
 export default class VSCodeRecentFoldersExtension extends Extension {
     enable() {
         this._settings = this.getSettings();
+        // Pre-warm the cache so folders appear on first menu open
+        const maxFolders = this._settings.get_int('max-recent-folders');
+        fetchRecentFoldersAsync(maxFolders).then(folders => {
+            _folderCache = folders;
+        }).catch(() => {});
         patchPopupOpen(this._settings);
     }
     disable() {
         unpatchPopupOpen();
+        _folderCache = [];
         this._settings = null;
     }
 }
