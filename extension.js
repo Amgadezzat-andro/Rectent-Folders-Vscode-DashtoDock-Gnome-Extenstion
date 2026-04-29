@@ -67,7 +67,7 @@ async function fetchRecentFoldersAsync(maxFolders) {
                 [python3, '-c', pyScript, dbPath],
                 Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE
             );
-            const [, stdout] = await proc.communicate_utf8_async(null, null);
+            const [stdout] = await proc.communicate_utf8_async(null, null);
             if (!stdout?.length) continue;
 
             const raw = stdout.trim();
