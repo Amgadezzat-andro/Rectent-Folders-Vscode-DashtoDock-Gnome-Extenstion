@@ -42,7 +42,7 @@ function getDbPaths() {
     ];
 }
 
-function getRecentFolders() {
+function getRecentFolders(maxFolders) {
     const python3 = GLib.find_program_in_path('python3') ?? '/usr/bin/python3';
     const pyScript = [
         'import sqlite3, sys',
@@ -81,7 +81,7 @@ function getRecentFolders() {
                 if (!path) continue;
                 const label = GLib.path_get_basename(path) || path;
                 folders.push({ path, label });
-                if (folders.length >= 10) break;
+                if (folders.length >= maxFolders) break;
             }
 
             if (folders.length > 0) return folders;
@@ -90,13 +90,14 @@ function getRecentFolders() {
     return [];
 }
 
-function openInVSCode(folderPath) {
+function openInVSCode(folderPath, useOzoneX11) {
     const code = GLib.find_program_in_path('code');
+    const extraFlags = useOzoneX11 ? ['--ozone-platform=x11'] : [];
     const candidates = [
-        ...(code ? [[code, '--new-window', folderPath]] : []),
-        ['/usr/bin/code', '--new-window', folderPath],
-        ['/snap/bin/code', '--new-window', folderPath],
-        ['/usr/local/bin/code', '--new-window', folderPath],
+        ...(code ? [[code, '--new-window', ...extraFlags, folderPath]] : []),
+        ['/usr/bin/code', '--new-window', ...extraFlags, folderPath],
+        ['/snap/bin/code', '--new-window', ...extraFlags, folderPath],
+        ['/usr/local/bin/code', '--new-window', ...extraFlags, folderPath],
     ];
     for (const cmd of candidates) {
         try { Gio.Subprocess.new(cmd, Gio.SubprocessFlags.NONE); return; } catch (_e) { }
@@ -105,15 +106,17 @@ function openInVSCode(folderPath) {
 
 // ── Menu injection ────────────────────────────────────────────────────────────
 
-function appendFoldersToMenu(menu) {
-    const folders = getRecentFolders();
+function appendFoldersToMenu(menu, settings) {
+    const maxFolders = settings.get_int('max-recent-folders');
+    const useOzoneX11 = settings.get_boolean('use-ozone-x11');
+    const folders = getRecentFolders(maxFolders);
     if (!folders.length) return;
     menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Recent Folders'));
     for (const { path, label } of folders)
-        menu.addAction(label, () => openInVSCode(path));
+        menu.addAction(label, () => openInVSCode(path, useOzoneX11));
 }
 
-function patchPopupOpen() {
+function patchPopupOpen(settings) {
     if (PopupMenu.PopupMenu.prototype[PATCH_MARKER]) return;
     const original = PopupMenu.PopupMenu.prototype.open;
     PopupMenu.PopupMenu.prototype[PATCH_MARKER] = original;
@@ -121,7 +124,7 @@ function patchPopupOpen() {
         try {
             const appId = this.sourceActor?.app?.get_id?.() ?? '';
             if (isVSCodeApp(appId))
-                appendFoldersToMenu(this);
+                appendFoldersToMenu(this, settings);
         } catch (_e) { }
         original.call(this, animate);
     };
@@ -138,9 +141,11 @@ function unpatchPopupOpen() {
 
 export default class VSCodeRecentFoldersExtension extends Extension {
     enable() {
-        patchPopupOpen();
+        this._settings = this.getSettings();
+        patchPopupOpen(this._settings);
     }
     disable() {
         unpatchPopupOpen();
+        this._settings = null;
     }
 }

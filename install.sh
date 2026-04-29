@@ -10,16 +10,26 @@ echo "=== VSCode Recent Folders — GNOME Shell Extension Installer ==="
 echo ""
 
 # ── 1. Install files ──────────────────────────────────────────────────────────
-echo "[1/3] Installing extension files to:"
+echo "[1/4] Installing extension files to:"
 echo "      $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 cp "$SCRIPT_DIR/extension.js" "$INSTALL_DIR/"
+cp "$SCRIPT_DIR/prefs.js"     "$INSTALL_DIR/"
 cp "$SCRIPT_DIR/metadata.json" "$INSTALL_DIR/"
 echo "      Done."
 echo ""
 
+# ── 2. Install and compile GSettings schema ───────────────────────────────────
+echo "[2/4] Installing GSettings schema..."
+SCHEMA_DIR="$INSTALL_DIR/schemas"
+mkdir -p "$SCHEMA_DIR"
+cp "$SCRIPT_DIR/schemas/"*.gschema.xml "$SCHEMA_DIR/"
+glib-compile-schemas "$SCHEMA_DIR"
+echo "      Schema compiled."
+echo ""
+
 # ── 2. Verify VS Code storage file exists ────────────────────────────────────
-echo "[2/3] Checking for VS Code recent-folders storage..."
+echo "[3/4] Checking for VS Code recent-folders storage..."
 FOUND=0
 for STORAGE_PATH in \
     "$HOME/.config/Code/User/globalStorage/storage.json" \
@@ -39,7 +49,7 @@ fi
 echo ""
 
 # ── 3. Enable the extension ───────────────────────────────────────────────────
-echo "[3/3] Enabling extension..."
+echo "[4/4] Enabling extension..."
 
 # On Wayland (Ubuntu 24.04 default) GNOME Shell cannot be restarted in-session.
 # The extension manager can load new extensions without a full restart IF
