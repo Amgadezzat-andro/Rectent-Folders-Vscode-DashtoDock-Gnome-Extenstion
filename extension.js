@@ -50,10 +50,11 @@ function getDbPaths() {
 
 async function fetchRecentFoldersAsync(maxFolders) {
     const python3 = GLib.find_program_in_path('python3') ?? '/usr/bin/python3';
+    // Try both the new key (VS Code 1.95+) and the legacy key
     const pyScript = [
         'import sqlite3, sys',
         'con = sqlite3.connect(sys.argv[1])',
-        "cur = con.execute(\"SELECT value FROM ItemTable WHERE key='history.recentlyOpenedPathsList'\")",
+        "cur = con.execute(\"SELECT value FROM ItemTable WHERE key IN ('recently.opened','history.recentlyOpenedPathsList') ORDER BY CASE key WHEN 'recently.opened' THEN 0 ELSE 1 END\")",
         'row = cur.fetchone()',
         'print(row[0] if row else "", end="")',
     ].join('\n');
@@ -79,7 +80,7 @@ async function fetchRecentFoldersAsync(maxFolders) {
 
             const folders = [];
             for (const entry of entries) {
-                const uri = entry.folderUri;
+                const uri = entry.folderUri ?? entry.workspace?.configPath;
                 if (!uri?.startsWith('file://')) continue;
                 const path = decodeURIComponent(uri.slice(7));
                 if (!path) continue;
@@ -91,6 +92,32 @@ async function fetchRecentFoldersAsync(maxFolders) {
             if (folders.length > 0) return folders;
         } catch (_e) { }
     }
+
+    // Fallback: read currently-open folders from storage.json (VS Code 1.95+ keeps these)
+    return _readStorageJsonFolders(maxFolders);
+}
+
+function _readStorageJsonFolders(maxFolders) {
+    const home = GLib.get_home_dir();
+    const storagePath = `${home}/.config/Code/User/globalStorage/storage.json`;
+    try {
+        const file = Gio.File.new_for_path(storagePath);
+        if (!file.query_exists(null)) return [];
+        const [, contents] = file.load_contents(null);
+        const data = JSON.parse(new TextDecoder().decode(contents));
+        const rawFolders = data?.backupWorkspaces?.folders ?? [];
+        const folders = [];
+        for (const entry of rawFolders) {
+            const uri = entry.folderUri;
+            if (!uri?.startsWith('file://')) continue;
+            const path = decodeURIComponent(uri.slice(7));
+            if (!path) continue;
+            const label = GLib.path_get_basename(path) || path;
+            folders.push({ path, label });
+            if (folders.length >= maxFolders) break;
+        }
+        return folders;
+    } catch (_e) { }
     return [];
 }
 
