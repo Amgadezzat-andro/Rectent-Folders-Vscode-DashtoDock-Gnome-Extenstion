@@ -9,8 +9,8 @@ import Gio from 'gi://Gio';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 
-// Enable async/await for Gio.Subprocess
 Gio._promisify(Gio.Subprocess.prototype, 'communicate_utf8_async', 'communicate_utf8_finish');
+Gio._promisify(Gio.File.prototype, 'load_contents_async', 'load_contents_finish');
 
 // ── VS Code app IDs to recognise ─────────────────────────────────────────────
 const VSCODE_APP_IDS = [
@@ -97,13 +97,13 @@ async function fetchRecentFoldersAsync(maxFolders) {
     return _readStorageJsonFolders(maxFolders);
 }
 
-function _readStorageJsonFolders(maxFolders) {
+async function _readStorageJsonFolders(maxFolders) {
     const home = GLib.get_home_dir();
     const storagePath = `${home}/.config/Code/User/globalStorage/storage.json`;
     try {
         const file = Gio.File.new_for_path(storagePath);
         if (!file.query_exists(null)) return [];
-        const [, contents] = file.load_contents(null);
+        const [, contents] = await file.load_contents_async(null);
         const data = JSON.parse(new TextDecoder().decode(contents));
         const rawFolders = data?.backupWorkspaces?.folders ?? [];
         const folders = [];
