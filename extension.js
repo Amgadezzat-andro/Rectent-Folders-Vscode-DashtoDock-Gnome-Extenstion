@@ -48,16 +48,17 @@ function getDbPaths() {
     ];
 }
 
+function _folderLabel(path) {
+    const home = GLib.get_home_dir();
+    const parent = GLib.path_get_dirname(path);
+    const displayParent = parent.startsWith(home) ? '~' + parent.slice(home.length) : parent;
+    return `${GLib.path_get_basename(path) || path}  ${displayParent}`;
+}
+
 async function fetchRecentFoldersAsync(maxFolders) {
     const python3 = GLib.find_program_in_path('python3') ?? '/usr/bin/python3';
-    // Try both the new key (VS Code 1.95+) and the legacy key
-    const pyScript = [
-        'import sqlite3, sys',
-        'con = sqlite3.connect(sys.argv[1])',
-        "cur = con.execute(\"SELECT value FROM ItemTable WHERE key IN ('recently.opened','history.recentlyOpenedPathsList') ORDER BY CASE key WHEN 'recently.opened' THEN 0 ELSE 1 END\")",
-        'row = cur.fetchone()',
-        'print(row[0] if row else "", end="")',
-    ].join('\n');
+    const extensionDir = Gio.File.new_for_uri(import.meta.url).get_parent().get_path();
+    const pyScript = `${extensionDir}/fetch_recent.py`;
 
     for (const dbPath of getDbPaths()) {
         try {
@@ -65,7 +66,7 @@ async function fetchRecentFoldersAsync(maxFolders) {
             if (!file.query_exists(null)) continue;
 
             const proc = Gio.Subprocess.new(
-                [python3, '-c', pyScript, dbPath],
+                [python3, pyScript, dbPath],
                 Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE
             );
             const [stdout] = await proc.communicate_utf8_async(null, null);
@@ -84,8 +85,7 @@ async function fetchRecentFoldersAsync(maxFolders) {
                 if (!uri?.startsWith('file://')) continue;
                 const path = decodeURIComponent(uri.slice(7));
                 if (!path) continue;
-                const label = GLib.path_get_basename(path) || path;
-                folders.push({ path, label });
+                folders.push({ path, label: _folderLabel(path) });
                 if (folders.length >= maxFolders) break;
             }
 
@@ -112,8 +112,7 @@ function _readStorageJsonFolders(maxFolders) {
             if (!uri?.startsWith('file://')) continue;
             const path = decodeURIComponent(uri.slice(7));
             if (!path) continue;
-            const label = GLib.path_get_basename(path) || path;
-            folders.push({ path, label });
+            folders.push({ path, label: _folderLabel(path) });
             if (folders.length >= maxFolders) break;
         }
         return folders;
