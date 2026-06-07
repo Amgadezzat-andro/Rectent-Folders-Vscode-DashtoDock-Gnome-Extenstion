@@ -12,7 +12,7 @@ import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 Gio._promisify(Gio.Subprocess.prototype, 'communicate_utf8_async', 'communicate_utf8_finish');
 Gio._promisify(Gio.File.prototype, 'load_contents_async', 'load_contents_finish');
 
-// ── VS Code app IDs to recognise ─────────────────────────────────────────────
+// ── App IDs to recognise ──────────────────────────────────────────────────────
 const VSCODE_APP_IDS = [
     'code.desktop',
     'code-url-handler.desktop',
@@ -21,9 +21,14 @@ const VSCODE_APP_IDS = [
     'snap.code.code.desktop',
 ];
 
+const NAUTILUS_APP_IDS = [
+    'org.gnome.Nautilus.desktop',
+    'nautilus.desktop',
+];
+
 const PATCH_MARKER = Symbol('vscodeRecentFoldersPatch');
 
-// ── Folder cache (populated asynchronously) ───────────────────────────────────
+// ── VS Code folder cache (pre-warmed on load) ─────────────────────────────────
 let _folderCache = [];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -37,6 +42,13 @@ function isVSCodeApp(appId) {
         lower.includes('vscode') ||
         lower.startsWith('code.')
     );
+}
+
+function isFilesApp(appId) {
+    if (!appId) return false;
+    const lower = appId.toLowerCase();
+    return NAUTILUS_APP_IDS.some(id => id.toLowerCase() === lower) ||
+           lower.includes('nautilus');
 }
 
 function getDbPaths() {
@@ -156,6 +168,63 @@ async function _readStorageJsonFolders(maxFolders) {
     return [];
 }
 
+// ── GNOME Files (Nautilus) recent files ───────────────────────────────────────
+
+function _fileLabel(uri) {
+    const home = GLib.get_home_dir();
+    const path = decodeURIComponent(uri.slice(7));
+    const parent = GLib.path_get_dirname(path);
+    const displayParent = parent.startsWith(home) ? '~' + parent.slice(home.length) : parent;
+    return `${GLib.path_get_basename(path)}  ${displayParent}`;
+}
+
+function _readRecentFiles(maxFiles) {
+    const home = GLib.get_home_dir();
+    const xbelPath = `${home}/.local/share/recently-used.xbel`;
+    try {
+        const bookmarks = new GLib.BookmarkFile();
+        bookmarks.load_from_file(xbelPath);
+        const uris = bookmarks.get_uris().filter(u => u.startsWith('file://'));
+        uris.sort((a, b) => {
+            try {
+                const getTs = (uri) => {
+                    let m = 0, v = 0;
+                    try { m = bookmarks.get_modified(uri); } catch (_e) {}
+                    try { v = bookmarks.get_visited(uri); } catch (_e) {}
+                    return Math.max(m, v);
+                };
+                return getTs(b) - getTs(a);
+            } catch (_e) { return 0; }
+        });
+        return uris.slice(0, maxFiles).map(uri => ({ uri, label: _fileLabel(uri) }));
+    } catch (_e) {}
+    return [];
+}
+
+function openFile(uri) {
+    const gio = GLib.find_program_in_path('gio');
+    if (gio) {
+        try { Gio.Subprocess.new([gio, 'open', uri], Gio.SubprocessFlags.NONE); return; }
+        catch (_e) {}
+    }
+    const xdg = GLib.find_program_in_path('xdg-open');
+    if (xdg) {
+        try { Gio.Subprocess.new([xdg, decodeURIComponent(uri.slice(7))], Gio.SubprocessFlags.NONE); }
+        catch (_e) {}
+    }
+}
+
+function appendFilesToMenu(menu, settings) {
+    const maxFiles = settings.get_int('max-recent-files');
+    // Read synchronously so items are always available on first open
+    const files = _readRecentFiles(maxFiles);
+    if (files.length > 0) {
+        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Recent Files'));
+        for (const { uri, label } of files)
+            menu.addAction(label, () => openFile(uri));
+    }
+}
+
 function openInVSCode(folderPath, useOzoneX11) {
     const code = GLib.find_program_in_path('code');
     const extraFlags = useOzoneX11 ? ['--ozone-platform=x11'] : [];
@@ -195,9 +264,12 @@ function patchPopupOpen(settings) {
     PopupMenu.PopupMenu.prototype[PATCH_MARKER] = original;
     PopupMenu.PopupMenu.prototype.open = function (animate) {
         try {
-            const appId = this.sourceActor?.app?.get_id?.() ?? '';
+            const appId = this.sourceActor?.app?.get_id?.() ??
+                          this.sourceActor?._app?.get_id?.() ?? '';
             if (isVSCodeApp(appId))
                 appendFoldersToMenu(this, settings);
+            else if (isFilesApp(appId))
+                appendFilesToMenu(this, settings);
         } catch (_e) { }
         original.call(this, animate);
     };
@@ -215,11 +287,8 @@ function unpatchPopupOpen() {
 export default class VSCodeRecentFoldersExtension extends Extension {
     enable() {
         this._settings = this.getSettings();
-        // Pre-warm the cache so folders appear on first menu open
         const maxFolders = this._settings.get_int('max-recent-folders');
-        fetchRecentFoldersAsync(maxFolders).then(folders => {
-            _folderCache = folders;
-        }).catch(() => {});
+        fetchRecentFoldersAsync(maxFolders).then(f => { _folderCache = f; }).catch(() => {});
         patchPopupOpen(this._settings);
     }
     disable() {

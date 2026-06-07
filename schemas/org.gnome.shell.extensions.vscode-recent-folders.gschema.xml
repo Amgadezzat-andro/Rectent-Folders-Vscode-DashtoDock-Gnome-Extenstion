@@ -16,5 +16,12 @@
       <range min="1" max="50"/>
     </key>
 
+    <key name="max-recent-files" type="i">
+      <default>10</default>
+      <summary>Maximum Recent Files</summary>
+      <description>Maximum number of recently opened files to display in the Files dock context menu</description>
+      <range min="1" max="50"/>
+    </key>
+
   </schema>
 </schemalist>

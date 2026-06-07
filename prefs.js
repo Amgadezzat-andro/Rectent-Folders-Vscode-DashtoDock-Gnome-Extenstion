@@ -32,16 +32,16 @@ export default class VSCodeRecentFoldersPreferences extends ExtensionPreferences
         settings.bind('use-ozone-x11', ozoneRow, 'active', Gio.SettingsBindFlags.DEFAULT);
         launchGroup.add(ozoneRow);
 
-        // ── Menu Settings group ───────────────────────────────────────────────
+        // ── VS Code Menu Settings group ───────────────────────────────────────
         const menuGroup = new Adw.PreferencesGroup({
-            title: 'Menu Settings',
-            description: 'Configure the recent folders context menu',
+            title: 'VS Code Menu Settings',
+            description: 'Configure the recent folders context menu on the VS Code dock icon',
         });
         page.add(menuGroup);
 
-        const maxRow = new Adw.SpinRow({
+        const maxFoldersRow = new Adw.SpinRow({
             title: 'Maximum Recent Folders',
-            subtitle: 'Number of folders to show in the dock right-click menu',
+            subtitle: 'Number of folders to show in the VS Code dock right-click menu',
             adjustment: new Gtk.Adjustment({
                 lower: 1,
                 upper: 50,
@@ -49,7 +49,27 @@ export default class VSCodeRecentFoldersPreferences extends ExtensionPreferences
                 value: 10,
             }),
         });
-        settings.bind('max-recent-folders', maxRow, 'value', Gio.SettingsBindFlags.DEFAULT);
-        menuGroup.add(maxRow);
+        settings.bind('max-recent-folders', maxFoldersRow, 'value', Gio.SettingsBindFlags.DEFAULT);
+        menuGroup.add(maxFoldersRow);
+
+        // ── Files Menu Settings group ─────────────────────────────────────────
+        const filesGroup = new Adw.PreferencesGroup({
+            title: 'Files Menu Settings',
+            description: 'Configure the recent files context menu on the Files (Nautilus) dock icon',
+        });
+        page.add(filesGroup);
+
+        const maxFilesRow = new Adw.SpinRow({
+            title: 'Maximum Recent Files',
+            subtitle: 'Number of recently opened files to show in the Files dock right-click menu',
+            adjustment: new Gtk.Adjustment({
+                lower: 1,
+                upper: 50,
+                step_increment: 1,
+                value: 10,
+            }),
+        });
+        settings.bind('max-recent-files', maxFilesRow, 'value', Gio.SettingsBindFlags.DEFAULT);
+        filesGroup.add(maxFilesRow);
     }
 }
