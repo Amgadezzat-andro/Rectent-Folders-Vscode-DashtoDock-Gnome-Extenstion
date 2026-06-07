@@ -26,6 +26,12 @@ const NAUTILUS_APP_IDS = [
     'nautilus.desktop',
 ];
 
+const SPOTIFY_APP_IDS = [
+    'spotify.desktop',
+    'com.spotify.Client.desktop',
+    'snap.spotify.spotify.desktop',
+];
+
 const PATCH_MARKER = Symbol('vscodeRecentFoldersPatch');
 
 // ── VS Code folder cache (pre-warmed on load) ─────────────────────────────────
@@ -49,6 +55,13 @@ function isFilesApp(appId) {
     const lower = appId.toLowerCase();
     return NAUTILUS_APP_IDS.some(id => id.toLowerCase() === lower) ||
            lower.includes('nautilus');
+}
+
+function isSpotifyApp(appId) {
+    if (!appId) return false;
+    const lower = appId.toLowerCase();
+    return SPOTIFY_APP_IDS.some(id => id.toLowerCase() === lower) ||
+           lower.includes('spotify');
 }
 
 function getDbPaths() {
@@ -225,6 +238,51 @@ function appendFilesToMenu(menu, settings) {
     }
 }
 
+// ── Spotify (MPRIS) ───────────────────────────────────────────────────────────
+
+function _getSpotifyPlayer() {
+    try {
+        return Gio.DBusProxy.new_for_bus_sync(
+            Gio.BusType.SESSION,
+            Gio.DBusProxyFlags.NONE,
+            null,
+            'org.mpris.MediaPlayer2.spotify',
+            '/org/mpris/MediaPlayer2',
+            'org.mpris.MediaPlayer2.Player',
+            null
+        );
+    } catch (_e) {}
+    return null;
+}
+
+function _mprisCall(player, method) {
+    try { player.call_sync(method, null, Gio.DBusCallFlags.NONE, -1, null); }
+    catch (_e) {}
+}
+
+function appendSpotifyToMenu(menu) {
+    const player = _getSpotifyPlayer();
+    if (!player) return;
+
+    const metaVar = player.get_cached_property('Metadata');
+    const statusVar = player.get_cached_property('PlaybackStatus');
+    if (!metaVar) return;
+
+    const meta = metaVar.recursiveUnpack();
+    const title = meta['xesam:title'] || '';
+    if (!title) return;
+
+    const rawArtists = meta['xesam:artist'];
+    const artist = Array.isArray(rawArtists) ? rawArtists.join(', ') : (rawArtists ?? '');
+    const isPlaying = statusVar?.unpack() === 'Playing';
+
+    menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Now Playing'));
+    menu.addAction(`${title}  ${artist}`, () => _mprisCall(player, 'PlayPause'));
+    menu.addAction(isPlaying ? '⏸  Pause'    : '▶  Resume',  () => _mprisCall(player, 'PlayPause'));
+    menu.addAction('⏭  Next Track',                           () => _mprisCall(player, 'Next'));
+    menu.addAction('⏮  Previous Track',                       () => _mprisCall(player, 'Previous'));
+}
+
 function openInVSCode(folderPath, useOzoneX11) {
     const code = GLib.find_program_in_path('code');
     const extraFlags = useOzoneX11 ? ['--ozone-platform=x11'] : [];
@@ -270,6 +328,8 @@ function patchPopupOpen(settings) {
                 appendFoldersToMenu(this, settings);
             else if (isFilesApp(appId))
                 appendFilesToMenu(this, settings);
+            else if (isSpotifyApp(appId))
+                appendSpotifyToMenu(this);
         } catch (_e) { }
         original.call(this, animate);
     };
