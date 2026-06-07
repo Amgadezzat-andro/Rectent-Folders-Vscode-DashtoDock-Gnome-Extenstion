@@ -1,6 +1,6 @@
 {
   "name": "VSCode Recent Folders",
-  "description": "Shows VS Code recently opened folders in the right-click context menu of the dock icon",
+  "description": "Adds your VS Code recently opened folders and workspaces directly to the dock icon's right-click menu. Jump back into any project instantly without opening VS Code first — no searching, no extra clicks. Works with Dash-to-Dock and Ubuntu Dock, and supports standard, Snap, and Flatpak VS Code installations.",
   "uuid": "vscode-recent-folders@amgad",
   "shell-version": ["45", "46", "47", "48"],
   "settings-schema": "org.gnome.shell.extensions.vscode-recent-folders",
