@@ -1,7 +1,9 @@
 /**
- * VSCode Recent Folders — GNOME Shell Extension
- * Adds recently opened VS Code folders to the right-click dock icon menu.
- * Compatible with GNOME 46, Dash-to-Dock, and Ubuntu Dock.
+ * Smart Dock Menus — GNOME Shell Extension
+ * App-aware quick-access menus for dock icons:
+ *   • VS Code  → recent folders & workspaces
+ *   • Files    → recent files (matches Nautilus Recent view)
+ *   • Spotify  → now playing + playback controls (via MPRIS)
  */
 
 import GLib from 'gi://GLib';

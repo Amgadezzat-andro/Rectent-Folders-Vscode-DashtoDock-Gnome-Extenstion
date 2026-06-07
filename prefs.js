@@ -1,5 +1,5 @@
 /**
- * VSCode Recent Folders — Preferences
+ * Smart Dock Menus — Preferences
  * Settings UI for the GNOME Shell extension.
  */
 
@@ -13,8 +13,8 @@ export default class VSCodeRecentFoldersPreferences extends ExtensionPreferences
         const settings = this.getSettings();
 
         const page = new Adw.PreferencesPage({
-            title: 'VS Code Recent Folders',
-            icon_name: 'folder-recent-symbolic',
+            title: 'Smart Dock Menus',
+            icon_name: 'view-app-grid-symbolic',
         });
         window.add(page);
 

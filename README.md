@@ -1,6 +1,6 @@
-# VSCode Recent Folders — GNOME Shell Extension
+# Smart Dock Menus — GNOME Shell Extension
 
-A GNOME Shell extension that adds your recently opened VS Code folders and workspaces directly to the **right-click context menu** of the VS Code dock icon (Dash-to-Dock / Ubuntu Dock).
+App-aware quick-access menus for your dock icons. Right-click any supported app to instantly access what matters — no opening the app first, no searching.
 
 ![Extension in action](image.png)
 

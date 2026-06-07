@@ -1,6 +1,6 @@
 {
-  "name": "VSCode Recent Folders",
-  "description": "Adds your VS Code recently opened folders and workspaces directly to the dock icon's right-click menu. Jump back into any project instantly without opening VS Code first — no searching, no extra clicks. Works with Dash-to-Dock and Ubuntu Dock, and supports standard, Snap, and Flatpak VS Code installations.",
+  "name": "Smart Dock Menus",
+  "description": "Adds app-aware quick-access menus to your dock icons. Right-click VS Code to jump into a recent project, right-click Files to open a recent file, right-click Spotify to see what's playing and control playback — all without opening the app first. Built on open standards (MPRIS, XDG recent files, VS Code's own history). Works with Dash-to-Dock and Ubuntu Dock.",
   "uuid": "vscode-recent-folders@amgad",
   "shell-version": ["45", "46", "47", "48"],
   "settings-schema": "org.gnome.shell.extensions.vscode-recent-folders",
