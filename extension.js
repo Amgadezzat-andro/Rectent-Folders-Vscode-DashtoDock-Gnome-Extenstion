@@ -55,6 +55,14 @@ function _folderLabel(path) {
     return `${GLib.path_get_basename(path) || path}  ${displayParent}`;
 }
 
+function _workspaceLabel(configPath) {
+    const home = GLib.get_home_dir();
+    const basename = GLib.path_get_basename(configPath).replace(/\.code-workspace$/, '');
+    const parent = GLib.path_get_dirname(configPath);
+    const displayParent = parent.startsWith(home) ? '~' + parent.slice(home.length) : parent;
+    return `${basename}  ${displayParent}`;
+}
+
 async function fetchRecentFoldersAsync(maxFolders) {
     const python3 = GLib.find_program_in_path('python3') ?? '/usr/bin/python3';
     const extensionDir = Gio.File.new_for_uri(import.meta.url).get_parent().get_path();
@@ -76,16 +84,44 @@ async function fetchRecentFoldersAsync(maxFolders) {
             if (!raw) continue;
 
             const json = JSON.parse(raw);
-            const entries = json?.entries;
+
+            // Modern format: { entries: [{ folderUri }, { workspace: { configPath } }, ...] }
+            // Legacy format: { workspaces3: ["file://...", ...], files2: [...] }
+            let entries = json?.entries;
+            if (!entries?.length) {
+                const ws3 = json?.workspaces3;
+                if (ws3?.length)
+                    entries = ws3.map(uri => ({ folderUri: uri }));
+            }
             if (!entries?.length) continue;
 
             const folders = [];
             for (const entry of entries) {
-                const uri = entry.folderUri ?? entry.workspace?.configPath;
-                if (!uri?.startsWith('file://')) continue;
-                const path = decodeURIComponent(uri.slice(7));
-                if (!path) continue;
-                folders.push({ path, label: _folderLabel(path) });
+                let uri, path, label;
+                if (entry.folderUri) {
+                    uri = entry.folderUri;
+                    if (!uri.startsWith('file://')) continue;
+                    path = decodeURIComponent(uri.slice(7));
+                    if (!path) continue;
+                    label = _folderLabel(path);
+                } else if (entry.workspace?.configPath) {
+                    // recently.opened format: workspace.configPath is a URI string
+                    uri = entry.workspace.configPath;
+                    if (!uri.startsWith('file://')) continue;
+                    path = decodeURIComponent(uri.slice(7));
+                    if (!path) continue;
+                    label = _workspaceLabel(path);
+                } else if (entry.workspaceUri) {
+                    // workspace.json format: workspaceUri is a direct URI string
+                    uri = entry.workspaceUri;
+                    if (!uri.startsWith('file://')) continue;
+                    path = decodeURIComponent(uri.slice(7));
+                    if (!path) continue;
+                    label = _workspaceLabel(path);
+                } else {
+                    continue;
+                }
+                folders.push({ path, label });
                 if (folders.length >= maxFolders) break;
             }
 
