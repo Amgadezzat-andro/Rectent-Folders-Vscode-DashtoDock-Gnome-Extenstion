@@ -34,6 +34,24 @@ const SPOTIFY_APP_IDS = [
     'snap.spotify.spotify.desktop',
 ];
 
+const SETTINGS_APP_IDS = [
+    'org.gnome.Settings.desktop',
+    'gnome-control-center.desktop',
+];
+
+const SETTINGS_PANELS = [
+    { label: 'Wi-Fi',            panel: 'wifi'            },
+    { label: 'Bluetooth',        panel: 'bluetooth'       },
+    { label: 'Network',          panel: 'network'         },
+    { label: 'Sound',            panel: 'sound'           },
+    { label: 'Displays',         panel: 'display'         },
+    { label: 'Power',            panel: 'power'           },
+    { label: 'Appearance',       panel: 'background'      },
+    { label: 'Notifications',    panel: 'notifications'   },
+    { label: 'Privacy',          panel: 'privacy'         },
+    { label: 'Apps',             panel: 'applications'    },
+];
+
 const PATCH_MARKER = Symbol('vscodeRecentFoldersPatch');
 
 // ── VS Code folder cache (pre-warmed on load) ─────────────────────────────────
@@ -64,6 +82,13 @@ function isSpotifyApp(appId) {
     const lower = appId.toLowerCase();
     return SPOTIFY_APP_IDS.some(id => id.toLowerCase() === lower) ||
            lower.includes('spotify');
+}
+
+function isSettingsApp(appId) {
+    if (!appId) return false;
+    const lower = appId.toLowerCase();
+    return SETTINGS_APP_IDS.some(id => id.toLowerCase() === lower) ||
+           lower.includes('gnome-control-center');
 }
 
 function getDbPaths() {
@@ -240,6 +265,19 @@ function appendFilesToMenu(menu, settings) {
     }
 }
 
+// ── GNOME Settings ───────────────────────────────────────────────────────────
+
+function appendSettingsToMenu(menu) {
+    const gcc = GLib.find_program_in_path('gnome-control-center');
+    if (!gcc) return;
+    menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Quick Settings'));
+    for (const { label, panel } of SETTINGS_PANELS)
+        menu.addAction(label, () => {
+            try { Gio.Subprocess.new([gcc, panel], Gio.SubprocessFlags.NONE); }
+            catch (_e) {}
+        });
+}
+
 // ── Spotify (MPRIS) ───────────────────────────────────────────────────────────
 
 function _getSpotifyPlayer() {
@@ -332,6 +370,8 @@ function patchPopupOpen(settings) {
                 appendFilesToMenu(this, settings);
             else if (isSpotifyApp(appId))
                 appendSpotifyToMenu(this);
+            else if (isSettingsApp(appId))
+                appendSettingsToMenu(this);
         } catch (_e) { }
         original.call(this, animate);
     };
