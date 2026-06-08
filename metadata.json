@@ -1,6 +1,6 @@
 {
   "name": "Smart Dock Menus",
-  "description": "Adds app-aware quick-access menus to your dock icons — no opening the app first.\n\n• VS Code → jump into a recent project or workspace\n• Files → open a recently used file\n• Spotify → see what's playing and control playback (play/pause, next, previous)\n• Settings → jump directly to Wi-Fi, Bluetooth, Sound, Displays, Power, and more\n\nBuilt on open standards: MPRIS for Spotify, XDG recent files for Files, VS Code's own SQLite history, and gnome-control-center panels for Settings. Works with Dash-to-Dock and Ubuntu Dock.",
+  "description": "Adds smart quick-access menus to your dock icons. Right-click any supported app to instantly access what matters.\n\nSupported apps:\n— VS Code: recent folders and workspaces\n— GNOME Files: recently opened files\n— Spotify: now playing, play/pause, next, previous\n— GNOME Settings: Wi-Fi, Bluetooth, Sound, Displays, Power, and more\n\nRequires Dash-to-Dock or Ubuntu Dock.",
   "uuid": "vscode-recent-folders@amgad",
   "shell-version": ["45", "46", "47", "48"],
   "settings-schema": "org.gnome.shell.extensions.vscode-recent-folders",
