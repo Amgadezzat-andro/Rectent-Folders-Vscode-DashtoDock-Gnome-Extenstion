@@ -34,6 +34,12 @@ const SPOTIFY_APP_IDS = [
     'snap.spotify.spotify.desktop',
 ];
 
+const OBSIDIAN_APP_IDS = [
+    'obsidian_obsidian.desktop',
+    'md.obsidian.Obsidian.desktop',
+    'obsidian.desktop',
+];
+
 const SETTINGS_APP_IDS = [
     'org.gnome.Settings.desktop',
     'gnome-control-center.desktop',
@@ -82,6 +88,13 @@ function isSpotifyApp(appId) {
     const lower = appId.toLowerCase();
     return SPOTIFY_APP_IDS.some(id => id.toLowerCase() === lower) ||
            lower.includes('spotify');
+}
+
+function isObsidianApp(appId) {
+    if (!appId) return false;
+    const lower = appId.toLowerCase();
+    return OBSIDIAN_APP_IDS.some(id => id.toLowerCase() === lower) ||
+           lower.includes('obsidian');
 }
 
 function isSettingsApp(appId) {
@@ -265,6 +278,52 @@ function appendFilesToMenu(menu, settings) {
     }
 }
 
+// ── Obsidian ─────────────────────────────────────────────────────────────────
+
+function _readObsidianVaults(maxVaults) {
+    const home = GLib.get_home_dir();
+    const configPaths = [
+        `${home}/snap/obsidian/current/.config/obsidian/obsidian.json`,
+        `${home}/.config/obsidian/obsidian.json`,
+        `${home}/.var/app/md.obsidian.Obsidian/config/obsidian/obsidian.json`,
+    ];
+    for (const configPath of configPaths) {
+        try {
+            const [ok, bytes] = GLib.file_get_contents(configPath);
+            if (!ok) continue;
+            const data = JSON.parse(new TextDecoder().decode(bytes));
+            const vaults = Object.values(data?.vaults ?? {});
+            if (!vaults.length) continue;
+            vaults.sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0));
+            return vaults.slice(0, maxVaults).map(v => {
+                const parent = GLib.path_get_dirname(v.path);
+                const displayParent = parent.startsWith(home) ? '~' + parent.slice(home.length) : parent;
+                return {
+                    label: `${GLib.path_get_basename(v.path)}  ${displayParent}`,
+                    path: v.path,
+                };
+            });
+        } catch (_e) {}
+    }
+    return [];
+}
+
+function appendObsidianToMenu(menu) {
+    const vaults = _readObsidianVaults(8);
+    if (!vaults.length) return;
+    menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Recent Vaults'));
+    for (const { label, path } of vaults) {
+        menu.addAction(label, () => {
+            try {
+                const encoded = encodeURIComponent(path).replace(/%2F/gi, '/');
+                const xdg = GLib.find_program_in_path('xdg-open');
+                if (xdg)
+                    Gio.Subprocess.new([xdg, `obsidian://open?path=${encoded}`], Gio.SubprocessFlags.NONE);
+            } catch (_e) {}
+        });
+    }
+}
+
 // ── GNOME Settings ───────────────────────────────────────────────────────────
 
 function appendSettingsToMenu(menu) {
@@ -370,6 +429,8 @@ function patchPopupOpen(settings) {
                 appendFilesToMenu(this, settings);
             else if (isSpotifyApp(appId))
                 appendSpotifyToMenu(this);
+            else if (isObsidianApp(appId))
+                appendObsidianToMenu(this);
             else if (isSettingsApp(appId))
                 appendSettingsToMenu(this);
         } catch (_e) { }
