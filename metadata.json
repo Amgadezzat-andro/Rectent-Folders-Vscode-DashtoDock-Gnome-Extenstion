@@ -1,6 +1,6 @@
 {
   "name": "Smart Dock Menus",
-  "description": "Adds smart quick-access menus to your dock icons. Right-click any supported app to instantly access what matters.\n\nSupported apps:\n— VS Code: recent folders and workspaces\n— GNOME Files: recently opened files\n— Spotify: now playing, play/pause, next, previous\n— Obsidian: recently opened vaults\n— GNOME Settings: Wi-Fi, Bluetooth, Sound, Displays, Power, and more\n\nRequires Dash-to-Dock or Ubuntu Dock.",
+  "description": "Adds smart quick-access menus to your dock icons. Right-click any supported app to instantly access what matters.\n\nSupported apps:\n— VS Code: recent folders and workspaces\n— GNOME Files: recently opened files\n— Spotify: now playing, play/pause, next, previous\n— Text Editor: recently opened documents (txt, md, json, py, sh, and more)\n— Obsidian: recently opened vaults\n— GNOME Settings: Wi-Fi, Bluetooth, Sound, Displays, Power, and more\n\nRequires Dash-to-Dock or Ubuntu Dock.",
   "uuid": "vscode-recent-folders@amgad",
   "shell-version": ["45", "46", "47", "48"],
   "settings-schema": "org.gnome.shell.extensions.vscode-recent-folders",

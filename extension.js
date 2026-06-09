@@ -34,6 +34,20 @@ const SPOTIFY_APP_IDS = [
     'snap.spotify.spotify.desktop',
 ];
 
+const TEXT_EDITOR_APP_IDS = [
+    'org.gnome.TextEditor.desktop',
+    'org.gnome.gedit.desktop',
+    'gedit.desktop',
+];
+
+const TEXT_EDITOR_MIMES = new Set([
+    'application/json',
+    'application/x-php',
+    'application/x-shellscript',
+    'application/sql',
+    'application/x-zerosize',
+]);
+
 const OBSIDIAN_APP_IDS = [
     'obsidian_obsidian.desktop',
     'md.obsidian.Obsidian.desktop',
@@ -88,6 +102,13 @@ function isSpotifyApp(appId) {
     const lower = appId.toLowerCase();
     return SPOTIFY_APP_IDS.some(id => id.toLowerCase() === lower) ||
            lower.includes('spotify');
+}
+
+function isTextEditorApp(appId) {
+    if (!appId) return false;
+    const lower = appId.toLowerCase();
+    return TEXT_EDITOR_APP_IDS.some(id => id.toLowerCase() === lower) ||
+           lower === 'org.gnome.texteditor.desktop';
 }
 
 function isObsidianApp(appId) {
@@ -278,6 +299,41 @@ function appendFilesToMenu(menu, settings) {
     }
 }
 
+// ── GNOME Text Editor ────────────────────────────────────────────────────────
+
+function appendTextEditorToMenu(menu, settings) {
+    const maxFiles = settings.get_int('max-recent-files');
+    const home = GLib.get_home_dir();
+    const xbelPath = `${home}/.local/share/recently-used.xbel`;
+    try {
+        const bookmarks = new GLib.BookmarkFile();
+        bookmarks.load_from_file(xbelPath);
+        const uris = bookmarks.get_uris().filter(u => {
+            if (!u.startsWith('file://')) return false;
+            try {
+                const mime = bookmarks.get_mime_type(u);
+                return mime?.startsWith('text/') || TEXT_EDITOR_MIMES.has(mime);
+            } catch (_e) { return false; }
+        });
+        uris.sort((a, b) => {
+            try {
+                const ts = uri => {
+                    let m = 0, v = 0;
+                    try { m = bookmarks.get_modified(uri); } catch (_e) {}
+                    try { v = bookmarks.get_visited(uri); } catch (_e) {}
+                    return Math.max(m, v);
+                };
+                return ts(b) - ts(a);
+            } catch (_e) { return 0; }
+        });
+        const files = uris.slice(0, maxFiles);
+        if (!files.length) return;
+        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Recent Documents'));
+        for (const uri of files)
+            menu.addAction(_fileLabel(uri), () => openFile(uri));
+    } catch (_e) {}
+}
+
 // ── Obsidian ─────────────────────────────────────────────────────────────────
 
 function _readObsidianVaults(maxVaults) {
@@ -429,6 +485,8 @@ function patchPopupOpen(settings) {
                 appendFilesToMenu(this, settings);
             else if (isSpotifyApp(appId))
                 appendSpotifyToMenu(this);
+            else if (isTextEditorApp(appId))
+                appendTextEditorToMenu(this, settings);
             else if (isObsidianApp(appId))
                 appendObsidianToMenu(this);
             else if (isSettingsApp(appId))
