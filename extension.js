@@ -1,9 +1,13 @@
 /**
  * Smart Dock Menus — GNOME Shell Extension
  * App-aware quick-access menus for dock icons:
- *   • VS Code  → recent folders & workspaces
+ *   • VS Code / VSCodium / Cursor → recent folders & workspaces
  *   • Files    → recent files (matches Nautilus Recent view)
  *   • Spotify  → now playing + playback controls (via MPRIS)
+ *   • GitKraken → recently opened repositories
+ *   • Obsidian  → recently opened vaults
+ *   • Text Editor → recent documents
+ *   • Settings  → quick panel shortcuts
  */
 
 import GLib from 'gi://GLib';
@@ -21,6 +25,24 @@ const VSCODE_APP_IDS = [
     'visual-studio-code.desktop',
     'com.visualstudio.code.desktop',
     'snap.code.code.desktop',
+];
+
+const VSCODIUM_APP_IDS = [
+    'codium.desktop',
+    'codium-url-handler.desktop',
+    'vscodium.desktop',
+    'com.vscodium.codium.desktop',
+];
+
+const CURSOR_APP_IDS = [
+    'cursor.desktop',
+    'cursor-url-handler.desktop',
+];
+
+const GITKRAKEN_APP_IDS = [
+    'gitkraken.desktop',
+    'gitkraken-url-handler.desktop',
+    'com.axosoft.GitKraken.desktop',
 ];
 
 const NAUTILUS_APP_IDS = [
@@ -74,20 +96,39 @@ const SETTINGS_PANELS = [
 
 const PATCH_MARKER = Symbol('vscodeRecentFoldersPatch');
 
-// ── VS Code folder cache (pre-warmed on load) ─────────────────────────────────
-let _folderCache = [];
+// ── Editor folder caches (keyed by editor type, pre-warmed on load) ──────────
+const _folderCaches = { vscode: [], vscodium: [], cursor: [] };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function isVSCodeApp(appId) {
     if (!appId) return false;
     const lower = appId.toLowerCase();
-    return (
-        VSCODE_APP_IDS.some(id => id.toLowerCase() === lower) ||
-        lower.includes('visual-studio-code') ||
-        lower.includes('vscode') ||
-        lower.startsWith('code.')
-    );
+    return VSCODE_APP_IDS.some(id => id.toLowerCase() === lower) ||
+           lower.includes('visual-studio-code') ||
+           lower.includes('vscode') ||
+           lower.startsWith('code.');
+}
+
+function isVSCodiumApp(appId) {
+    if (!appId) return false;
+    const lower = appId.toLowerCase();
+    return VSCODIUM_APP_IDS.some(id => id.toLowerCase() === lower) ||
+           lower.includes('codium');
+}
+
+function isCursorApp(appId) {
+    if (!appId) return false;
+    const lower = appId.toLowerCase();
+    return CURSOR_APP_IDS.some(id => id.toLowerCase() === lower) ||
+           lower === 'cursor.desktop' || lower === 'cursor-url-handler.desktop';
+}
+
+function isGitKrakenApp(appId) {
+    if (!appId) return false;
+    const lower = appId.toLowerCase();
+    return GITKRAKEN_APP_IDS.some(id => id.toLowerCase() === lower) ||
+           lower.includes('gitkraken');
 }
 
 function isFilesApp(appId) {
@@ -125,13 +166,38 @@ function isSettingsApp(appId) {
            lower.includes('gnome-control-center');
 }
 
-function getDbPaths() {
+function getDbPaths(editor = 'vscode') {
     const home = GLib.get_home_dir();
-    return [
-        `${home}/.config/Code/User/globalStorage/state.vscdb`,
-        `${home}/snap/code/common/.config/Code/User/globalStorage/state.vscdb`,
-        `${home}/.var/app/com.visualstudio.code/config/Code/User/globalStorage/state.vscdb`,
-    ];
+    const paths = {
+        vscode: [
+            `${home}/.config/Code/User/globalStorage/state.vscdb`,
+            `${home}/snap/code/common/.config/Code/User/globalStorage/state.vscdb`,
+            `${home}/.var/app/com.visualstudio.code/config/Code/User/globalStorage/state.vscdb`,
+        ],
+        vscodium: [
+            `${home}/.config/VSCodium/User/globalStorage/state.vscdb`,
+            `${home}/snap/codium/current/.config/VSCodium/User/globalStorage/state.vscdb`,
+            `${home}/.var/app/com.vscodium.codium/config/VSCodium/User/globalStorage/state.vscdb`,
+        ],
+        cursor: [
+            `${home}/.config/Cursor/User/globalStorage/state.vscdb`,
+            `${home}/snap/cursor/current/.config/Cursor/User/globalStorage/state.vscdb`,
+        ],
+    };
+    return paths[editor] ?? paths.vscode;
+}
+
+function _editorBin(editor) {
+    const bins = {
+        vscode:   ['code', '/usr/bin/code', '/snap/bin/code', '/usr/local/bin/code'],
+        vscodium: ['codium', '/usr/bin/codium', '/snap/bin/codium'],
+        cursor:   ['cursor', '/usr/bin/cursor', '/usr/local/bin/cursor'],
+    };
+    for (const b of (bins[editor] ?? bins.vscode)) {
+        const resolved = b.startsWith('/') ? b : GLib.find_program_in_path(b);
+        if (resolved && Gio.File.new_for_path(resolved).query_exists(null)) return resolved;
+    }
+    return null;
 }
 
 function _folderLabel(path) {
@@ -149,12 +215,12 @@ function _workspaceLabel(configPath) {
     return `${basename}  ${displayParent}`;
 }
 
-async function fetchRecentFoldersAsync(maxFolders) {
+async function fetchRecentFoldersAsync(maxFolders, editor = 'vscode') {
     const python3 = GLib.find_program_in_path('python3') ?? '/usr/bin/python3';
     const extensionDir = Gio.File.new_for_uri(import.meta.url).get_parent().get_path();
     const pyScript = `${extensionDir}/fetch_recent.py`;
 
-    for (const dbPath of getDbPaths()) {
+    for (const dbPath of getDbPaths(editor)) {
         try {
             const file = Gio.File.new_for_path(dbPath);
             if (!file.query_exists(null)) continue;
@@ -334,6 +400,38 @@ function appendTextEditorToMenu(menu, settings) {
     } catch (_e) {}
 }
 
+// ── GitKraken ────────────────────────────────────────────────────────────────
+
+function appendGitKrakenToMenu(menu) {
+    const home = GLib.get_home_dir();
+    const configPath = `${home}/.gitkraken/config`;
+    try {
+        const [ok, bytes] = GLib.file_get_contents(configPath);
+        if (!ok) return;
+        const data = JSON.parse(new TextDecoder().decode(bytes));
+        const openRepo = data?.fuzzyFinderMetadata?.itemMetadata?.OPEN_REPO ?? {};
+        const repos = Object.entries(openRepo).map(([key, val]) => {
+            const path = key.replace(/^openRepo-/, '');
+            const lastTs = Math.max(...(val.timestamps ?? [0]));
+            return { path, lastTs };
+        }).filter(r => r.path);
+        if (!repos.length) return;
+        repos.sort((a, b) => b.lastTs - a.lastTs);
+        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Recent Repos'));
+        for (const { path } of repos.slice(0, 10)) {
+            const parent = GLib.path_get_dirname(path);
+            const displayParent = parent.startsWith(home) ? '~' + parent.slice(home.length) : parent;
+            const label = `${GLib.path_get_basename(path)}  ${displayParent}`;
+            menu.addAction(label, () => {
+                try {
+                    const gk = GLib.find_program_in_path('gitkraken') ?? '/usr/bin/gitkraken';
+                    Gio.Subprocess.new([gk, '-p', path], Gio.SubprocessFlags.NONE);
+                } catch (_e) {}
+            });
+        }
+    } catch (_e) {}
+}
+
 // ── Obsidian ─────────────────────────────────────────────────────────────────
 
 function _readObsidianVaults(maxVaults) {
@@ -438,36 +536,29 @@ function appendSpotifyToMenu(menu) {
     menu.addAction('⏮  Previous Track',                       () => _mprisCall(player, 'Previous'));
 }
 
-function openInVSCode(folderPath, useOzoneX11) {
-    const code = GLib.find_program_in_path('code');
+function openInVSCode(folderPath, useOzoneX11, editor = 'vscode') {
+    const bin = _editorBin(editor);
+    if (!bin) return;
     const extraFlags = useOzoneX11 ? ['--ozone-platform=x11'] : [];
-    const candidates = [
-        ...(code ? [[code, '--new-window', ...extraFlags, folderPath]] : []),
-        ['/usr/bin/code', '--new-window', ...extraFlags, folderPath],
-        ['/snap/bin/code', '--new-window', ...extraFlags, folderPath],
-        ['/usr/local/bin/code', '--new-window', ...extraFlags, folderPath],
-    ];
-    for (const cmd of candidates) {
-        try { Gio.Subprocess.new(cmd, Gio.SubprocessFlags.NONE); return; } catch (_e) { }
-    }
+    try { Gio.Subprocess.new([bin, '--new-window', ...extraFlags, folderPath], Gio.SubprocessFlags.NONE); }
+    catch (_e) {}
 }
 
 // ── Menu injection ────────────────────────────────────────────────────────────
 
-function appendFoldersToMenu(menu, settings) {
+function appendFoldersToMenu(menu, settings, editor = 'vscode') {
     const maxFolders = settings.get_int('max-recent-folders');
     const useOzoneX11 = settings.get_boolean('use-ozone-x11');
+    const cache = _folderCaches[editor] ?? [];
 
-    // Display cached folders immediately (no blocking)
-    if (_folderCache.length > 0) {
+    if (cache.length > 0) {
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Recent Folders'));
-        for (const { path, label } of _folderCache.slice(0, maxFolders))
-            menu.addAction(label, () => openInVSCode(path, useOzoneX11));
+        for (const { path, label } of cache.slice(0, maxFolders))
+            menu.addAction(label, () => openInVSCode(path, useOzoneX11, editor));
     }
 
-    // Refresh cache asynchronously for next open
-    fetchRecentFoldersAsync(maxFolders).then(folders => {
-        _folderCache = folders;
+    fetchRecentFoldersAsync(maxFolders, editor).then(folders => {
+        _folderCaches[editor] = folders;
     }).catch(() => {});
 }
 
@@ -480,7 +571,13 @@ function patchPopupOpen(settings) {
             const appId = this.sourceActor?.app?.get_id?.() ??
                           this.sourceActor?._app?.get_id?.() ?? '';
             if (isVSCodeApp(appId))
-                appendFoldersToMenu(this, settings);
+                appendFoldersToMenu(this, settings, 'vscode');
+            else if (isVSCodiumApp(appId))
+                appendFoldersToMenu(this, settings, 'vscodium');
+            else if (isCursorApp(appId))
+                appendFoldersToMenu(this, settings, 'cursor');
+            else if (isGitKrakenApp(appId))
+                appendGitKrakenToMenu(this);
             else if (isFilesApp(appId))
                 appendFilesToMenu(this, settings);
             else if (isSpotifyApp(appId))
@@ -509,12 +606,15 @@ export default class VSCodeRecentFoldersExtension extends Extension {
     enable() {
         this._settings = this.getSettings();
         const maxFolders = this._settings.get_int('max-recent-folders');
-        fetchRecentFoldersAsync(maxFolders).then(f => { _folderCache = f; }).catch(() => {});
+        for (const editor of ['vscode', 'vscodium', 'cursor'])
+            fetchRecentFoldersAsync(maxFolders, editor)
+                .then(f => { _folderCaches[editor] = f; })
+                .catch(() => {});
         patchPopupOpen(this._settings);
     }
     disable() {
         unpatchPopupOpen();
-        _folderCache = [];
+        for (const k of Object.keys(_folderCaches)) _folderCaches[k] = [];
         this._settings = null;
     }
 }
