@@ -3,12 +3,27 @@
   <schema id="org.gnome.shell.extensions.vscode-recent-folders"
           path="/org/gnome/shell/extensions/vscode-recent-folders/">
 
+    <!-- ── VS Code / VSCodium / Cursor ───────────────────────────── -->
+    <key name="enable-vscode" type="b">
+      <default>true</default>
+      <summary>Enable VS Code integration</summary>
+      <description>Show recent folders in the VS Code dock right-click menu</description>
+    </key>
+    <key name="enable-vscodium" type="b">
+      <default>true</default>
+      <summary>Enable VSCodium integration</summary>
+      <description>Show recent folders in the VSCodium dock right-click menu</description>
+    </key>
+    <key name="enable-cursor" type="b">
+      <default>true</default>
+      <summary>Enable Cursor integration</summary>
+      <description>Show recent folders in the Cursor dock right-click menu</description>
+    </key>
     <key name="use-ozone-x11" type="b">
       <default>false</default>
       <summary>Use Ozone X11 Platform</summary>
-      <description>Launch VS Code with --ozone-platform=x11 (useful when running on Wayland)</description>
+      <description>Launch code editors with --ozone-platform=x11 (useful when running on Wayland)</description>
     </key>
-
     <key name="max-recent-folders" type="i">
       <default>10</default>
       <summary>Maximum Recent Folders</summary>
@@ -16,11 +31,70 @@
       <range min="1" max="50"/>
     </key>
 
+    <!-- ── GNOME Files ────────────────────────────────────────────── -->
+    <key name="enable-files" type="b">
+      <default>true</default>
+      <summary>Enable Files integration</summary>
+      <description>Show recent files in the Files (Nautilus) dock right-click menu</description>
+    </key>
     <key name="max-recent-files" type="i">
       <default>10</default>
       <summary>Maximum Recent Files</summary>
       <description>Maximum number of recently opened files to display in the Files dock context menu</description>
       <range min="1" max="50"/>
+    </key>
+
+    <!-- ── Text Editor ────────────────────────────────────────────── -->
+    <key name="enable-text-editor" type="b">
+      <default>true</default>
+      <summary>Enable Text Editor integration</summary>
+      <description>Show recent documents in the Text Editor dock right-click menu</description>
+    </key>
+    <key name="max-recent-docs" type="i">
+      <default>10</default>
+      <summary>Maximum Recent Documents</summary>
+      <description>Maximum number of recently opened documents to display in the Text Editor dock context menu</description>
+      <range min="1" max="50"/>
+    </key>
+
+    <!-- ── Spotify ────────────────────────────────────────────────── -->
+    <key name="enable-spotify" type="b">
+      <default>true</default>
+      <summary>Enable Spotify integration</summary>
+      <description>Show now playing info and controls in the Spotify dock right-click menu</description>
+    </key>
+
+    <!-- ── GitKraken ──────────────────────────────────────────────── -->
+    <key name="enable-gitkraken" type="b">
+      <default>true</default>
+      <summary>Enable GitKraken integration</summary>
+      <description>Show recent repositories in the GitKraken dock right-click menu</description>
+    </key>
+    <key name="max-recent-repos" type="i">
+      <default>10</default>
+      <summary>Maximum Recent Repos</summary>
+      <description>Maximum number of recently opened repositories to display in the GitKraken dock context menu</description>
+      <range min="1" max="50"/>
+    </key>
+
+    <!-- ── Obsidian ───────────────────────────────────────────────── -->
+    <key name="enable-obsidian" type="b">
+      <default>true</default>
+      <summary>Enable Obsidian integration</summary>
+      <description>Show recent vaults in the Obsidian dock right-click menu</description>
+    </key>
+    <key name="max-recent-vaults" type="i">
+      <default>8</default>
+      <summary>Maximum Recent Vaults</summary>
+      <description>Maximum number of recently opened vaults to display in the Obsidian dock context menu</description>
+      <range min="1" max="20"/>
+    </key>
+
+    <!-- ── GNOME Settings ─────────────────────────────────────────── -->
+    <key name="enable-settings" type="b">
+      <default>true</default>
+      <summary>Enable Settings integration</summary>
+      <description>Show quick panel shortcuts in the GNOME Settings dock right-click menu</description>
     </key>
 
   </schema>

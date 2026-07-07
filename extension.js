@@ -368,7 +368,7 @@ function appendFilesToMenu(menu, settings) {
 // ── GNOME Text Editor ────────────────────────────────────────────────────────
 
 function appendTextEditorToMenu(menu, settings) {
-    const maxFiles = settings.get_int('max-recent-files');
+    const maxFiles = settings.get_int('max-recent-docs');
     const home = GLib.get_home_dir();
     const xbelPath = `${home}/.local/share/recently-used.xbel`;
     try {
@@ -402,7 +402,8 @@ function appendTextEditorToMenu(menu, settings) {
 
 // ── GitKraken ────────────────────────────────────────────────────────────────
 
-function appendGitKrakenToMenu(menu) {
+function appendGitKrakenToMenu(menu, settings) {
+    const maxRepos = settings.get_int('max-recent-repos');
     const home = GLib.get_home_dir();
     const configPath = `${home}/.gitkraken/config`;
     try {
@@ -418,7 +419,7 @@ function appendGitKrakenToMenu(menu) {
         if (!repos.length) return;
         repos.sort((a, b) => b.lastTs - a.lastTs);
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Recent Repos'));
-        for (const { path } of repos.slice(0, 10)) {
+        for (const { path } of repos.slice(0, maxRepos)) {
             const parent = GLib.path_get_dirname(path);
             const displayParent = parent.startsWith(home) ? '~' + parent.slice(home.length) : parent;
             const label = `${GLib.path_get_basename(path)}  ${displayParent}`;
@@ -462,8 +463,8 @@ function _readObsidianVaults(maxVaults) {
     return [];
 }
 
-function appendObsidianToMenu(menu) {
-    const vaults = _readObsidianVaults(8);
+function appendObsidianToMenu(menu, settings) {
+    const vaults = _readObsidianVaults(settings.get_int('max-recent-vaults'));
     if (!vaults.length) return;
     menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Recent Vaults'));
     for (const { label, path } of vaults) {
@@ -570,23 +571,24 @@ function patchPopupOpen(settings) {
         try {
             const appId = this.sourceActor?.app?.get_id?.() ??
                           this.sourceActor?._app?.get_id?.() ?? '';
-            if (isVSCodeApp(appId))
+            const g = k => settings.get_boolean(k);
+            if      (isVSCodeApp(appId)     && g('enable-vscode'))
                 appendFoldersToMenu(this, settings, 'vscode');
-            else if (isVSCodiumApp(appId))
+            else if (isVSCodiumApp(appId)   && g('enable-vscodium'))
                 appendFoldersToMenu(this, settings, 'vscodium');
-            else if (isCursorApp(appId))
+            else if (isCursorApp(appId)     && g('enable-cursor'))
                 appendFoldersToMenu(this, settings, 'cursor');
-            else if (isGitKrakenApp(appId))
-                appendGitKrakenToMenu(this);
-            else if (isFilesApp(appId))
+            else if (isGitKrakenApp(appId)  && g('enable-gitkraken'))
+                appendGitKrakenToMenu(this, settings);
+            else if (isFilesApp(appId)      && g('enable-files'))
                 appendFilesToMenu(this, settings);
-            else if (isSpotifyApp(appId))
+            else if (isSpotifyApp(appId)    && g('enable-spotify'))
                 appendSpotifyToMenu(this);
-            else if (isTextEditorApp(appId))
+            else if (isTextEditorApp(appId) && g('enable-text-editor'))
                 appendTextEditorToMenu(this, settings);
-            else if (isObsidianApp(appId))
-                appendObsidianToMenu(this);
-            else if (isSettingsApp(appId))
+            else if (isObsidianApp(appId)   && g('enable-obsidian'))
+                appendObsidianToMenu(this, settings);
+            else if (isSettingsApp(appId)   && g('enable-settings'))
                 appendSettingsToMenu(this);
         } catch (_e) { }
         original.call(this, animate);
