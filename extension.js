@@ -557,8 +557,8 @@ function patchPopupOpen(settings) {
     PopupMenu.PopupMenu.prototype[PATCH_MARKER] = original;
     PopupMenu.PopupMenu.prototype.open = function (animate) {
         try {
-            const appId = this.sourceActor?.app?.get_id?.() ??
-                          this.sourceActor?._app?.get_id?.() ?? '';
+            const appId = this.sourceActor?.app?.get_id() ??
+                          this.sourceActor?._app?.get_id() ?? '';
             const g = k => settings.get_boolean(k);
             if      (isVSCodeApp(appId)     && g('enable-vscode'))
                 appendFoldersToMenu(this, settings, 'vscode');
