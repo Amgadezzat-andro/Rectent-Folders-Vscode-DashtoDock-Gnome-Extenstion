@@ -96,8 +96,10 @@ const SETTINGS_PANELS = [
 
 const PATCH_MARKER = Symbol('vscodeRecentFoldersPatch');
 
-// ── Editor folder caches (keyed by editor type, pre-warmed on load) ──────────
+// ── Caches (pre-warmed async in enable, read sync in menu) ───────────────────
 const _folderCaches = { vscode: [], vscodium: [], cursor: [] };
+let _gitKrakenCache = [];
+let _obsidianCache  = [];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -291,7 +293,7 @@ async function _readStorageJsonFolders(maxFolders) {
     try {
         const file = Gio.File.new_for_path(storagePath);
         if (!file.query_exists(null)) return [];
-        const [, contents] = await file.load_contents_async(null);
+        const [contents] = await file.load_contents_async(null);
         const data = JSON.parse(new TextDecoder().decode(contents));
         const rawFolders = data?.backupWorkspaces?.folders ?? [];
         const folders = [];
@@ -318,25 +320,33 @@ function _fileLabel(uri) {
     return `${GLib.path_get_basename(path)}  ${displayParent}`;
 }
 
-function _readRecentFiles(maxFiles) {
+function _readXbel(maxItems, mimeFilter = false) {
     const home = GLib.get_home_dir();
     const xbelPath = `${home}/.local/share/recently-used.xbel`;
     try {
         const bookmarks = new GLib.BookmarkFile();
         bookmarks.load_from_file(xbelPath);
-        const uris = bookmarks.get_uris().filter(u => u.startsWith('file://'));
+        let uris = bookmarks.get_uris().filter(u => u.startsWith('file://'));
+        if (mimeFilter) {
+            uris = uris.filter(u => {
+                try {
+                    const mime = bookmarks.get_mime_type(u);
+                    return mime?.startsWith('text/') || TEXT_EDITOR_MIMES.has(mime);
+                } catch (_e) { return false; }
+            });
+        }
         uris.sort((a, b) => {
             try {
-                const getTs = (uri) => {
+                const ts = u => {
                     let m = 0, v = 0;
-                    try { m = bookmarks.get_modified(uri); } catch (_e) {}
-                    try { v = bookmarks.get_visited(uri); } catch (_e) {}
+                    try { m = bookmarks.get_modified(u); } catch (_e) {}
+                    try { v = bookmarks.get_visited(u); } catch (_e) {}
                     return Math.max(m, v);
                 };
-                return getTs(b) - getTs(a);
+                return ts(b) - ts(a);
             } catch (_e) { return 0; }
         });
-        return uris.slice(0, maxFiles).map(uri => ({ uri, label: _fileLabel(uri) }));
+        return uris.slice(0, maxItems).map(uri => ({ uri, label: _fileLabel(uri) }));
     } catch (_e) {}
     return [];
 }
@@ -355,74 +365,51 @@ function openFile(uri) {
 }
 
 function appendFilesToMenu(menu, settings) {
-    const maxFiles = settings.get_int('max-recent-files');
-    // Read synchronously so items are always available on first open
-    const files = _readRecentFiles(maxFiles);
-    if (files.length > 0) {
-        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Recent Files'));
-        for (const { uri, label } of files)
-            menu.addAction(label, () => openFile(uri));
-    }
+    const files = _readXbel(settings.get_int('max-recent-files'));
+    if (!files.length) return;
+    menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Recent Files'));
+    for (const { uri, label } of files)
+        menu.addAction(label, () => openFile(uri));
 }
 
 // ── GNOME Text Editor ────────────────────────────────────────────────────────
 
 function appendTextEditorToMenu(menu, settings) {
-    const maxFiles = settings.get_int('max-recent-docs');
-    const home = GLib.get_home_dir();
-    const xbelPath = `${home}/.local/share/recently-used.xbel`;
-    try {
-        const bookmarks = new GLib.BookmarkFile();
-        bookmarks.load_from_file(xbelPath);
-        const uris = bookmarks.get_uris().filter(u => {
-            if (!u.startsWith('file://')) return false;
-            try {
-                const mime = bookmarks.get_mime_type(u);
-                return mime?.startsWith('text/') || TEXT_EDITOR_MIMES.has(mime);
-            } catch (_e) { return false; }
-        });
-        uris.sort((a, b) => {
-            try {
-                const ts = uri => {
-                    let m = 0, v = 0;
-                    try { m = bookmarks.get_modified(uri); } catch (_e) {}
-                    try { v = bookmarks.get_visited(uri); } catch (_e) {}
-                    return Math.max(m, v);
-                };
-                return ts(b) - ts(a);
-            } catch (_e) { return 0; }
-        });
-        const files = uris.slice(0, maxFiles);
-        if (!files.length) return;
-        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Recent Documents'));
-        for (const uri of files)
-            menu.addAction(_fileLabel(uri), () => openFile(uri));
-    } catch (_e) {}
+    const files = _readXbel(settings.get_int('max-recent-docs'), true);
+    if (!files.length) return;
+    menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Recent Documents'));
+    for (const { uri, label } of files)
+        menu.addAction(label, () => openFile(uri));
 }
 
 // ── GitKraken ────────────────────────────────────────────────────────────────
 
-function appendGitKrakenToMenu(menu, settings) {
-    const maxRepos = settings.get_int('max-recent-repos');
+async function _fetchGitKrakenReposAsync(maxRepos) {
     const home = GLib.get_home_dir();
     const configPath = `${home}/.gitkraken/config`;
     try {
-        const [ok, bytes] = GLib.file_get_contents(configPath);
-        if (!ok) return;
+        const file = Gio.File.new_for_path(configPath);
+        const [bytes] = await file.load_contents_async(null);
         const data = JSON.parse(new TextDecoder().decode(bytes));
         const openRepo = data?.fuzzyFinderMetadata?.itemMetadata?.OPEN_REPO ?? {};
         const repos = Object.entries(openRepo).map(([key, val]) => {
             const path = key.replace(/^openRepo-/, '');
             const lastTs = Math.max(...(val.timestamps ?? [0]));
-            return { path, lastTs };
-        }).filter(r => r.path);
-        if (!repos.length) return;
-        repos.sort((a, b) => b.lastTs - a.lastTs);
-        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Recent Repos'));
-        for (const { path } of repos.slice(0, maxRepos)) {
             const parent = GLib.path_get_dirname(path);
             const displayParent = parent.startsWith(home) ? '~' + parent.slice(home.length) : parent;
-            const label = `${GLib.path_get_basename(path)}  ${displayParent}`;
+            return { path, lastTs, label: `${GLib.path_get_basename(path)}  ${displayParent}` };
+        }).filter(r => r.path);
+        repos.sort((a, b) => b.lastTs - a.lastTs);
+        return repos.slice(0, maxRepos);
+    } catch (_e) {}
+    return [];
+}
+
+function appendGitKrakenToMenu(menu, settings) {
+    const maxRepos = settings.get_int('max-recent-repos');
+    if (_gitKrakenCache.length > 0) {
+        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Recent Repos'));
+        for (const { label, path } of _gitKrakenCache.slice(0, maxRepos)) {
             menu.addAction(label, () => {
                 try {
                     const gk = GLib.find_program_in_path('gitkraken') ?? '/usr/bin/gitkraken';
@@ -430,12 +417,13 @@ function appendGitKrakenToMenu(menu, settings) {
                 } catch (_e) {}
             });
         }
-    } catch (_e) {}
+    }
+    _fetchGitKrakenReposAsync(maxRepos).then(r => { _gitKrakenCache = r; }).catch(() => {});
 }
 
 // ── Obsidian ─────────────────────────────────────────────────────────────────
 
-function _readObsidianVaults(maxVaults) {
+async function _fetchObsidianVaultsAsync(maxVaults) {
     const home = GLib.get_home_dir();
     const configPaths = [
         `${home}/snap/obsidian/current/.config/obsidian/obsidian.json`,
@@ -444,8 +432,9 @@ function _readObsidianVaults(maxVaults) {
     ];
     for (const configPath of configPaths) {
         try {
-            const [ok, bytes] = GLib.file_get_contents(configPath);
-            if (!ok) continue;
+            const file = Gio.File.new_for_path(configPath);
+            if (!file.query_exists(null)) continue;
+            const [bytes] = await file.load_contents_async(null);
             const data = JSON.parse(new TextDecoder().decode(bytes));
             const vaults = Object.values(data?.vaults ?? {});
             if (!vaults.length) continue;
@@ -453,10 +442,7 @@ function _readObsidianVaults(maxVaults) {
             return vaults.slice(0, maxVaults).map(v => {
                 const parent = GLib.path_get_dirname(v.path);
                 const displayParent = parent.startsWith(home) ? '~' + parent.slice(home.length) : parent;
-                return {
-                    label: `${GLib.path_get_basename(v.path)}  ${displayParent}`,
-                    path: v.path,
-                };
+                return { label: `${GLib.path_get_basename(v.path)}  ${displayParent}`, path: v.path };
             });
         } catch (_e) {}
     }
@@ -464,19 +450,21 @@ function _readObsidianVaults(maxVaults) {
 }
 
 function appendObsidianToMenu(menu, settings) {
-    const vaults = _readObsidianVaults(settings.get_int('max-recent-vaults'));
-    if (!vaults.length) return;
-    menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Recent Vaults'));
-    for (const { label, path } of vaults) {
-        menu.addAction(label, () => {
-            try {
-                const encoded = encodeURIComponent(path).replace(/%2F/gi, '/');
-                const xdg = GLib.find_program_in_path('xdg-open');
-                if (xdg)
-                    Gio.Subprocess.new([xdg, `obsidian://open?path=${encoded}`], Gio.SubprocessFlags.NONE);
-            } catch (_e) {}
-        });
+    const maxVaults = settings.get_int('max-recent-vaults');
+    if (_obsidianCache.length > 0) {
+        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Recent Vaults'));
+        for (const { label, path } of _obsidianCache.slice(0, maxVaults)) {
+            menu.addAction(label, () => {
+                try {
+                    const encoded = encodeURIComponent(path).replace(/%2F/gi, '/');
+                    const xdg = GLib.find_program_in_path('xdg-open');
+                    if (xdg)
+                        Gio.Subprocess.new([xdg, `obsidian://open?path=${encoded}`], Gio.SubprocessFlags.NONE);
+                } catch (_e) {}
+            });
+        }
     }
+    _fetchObsidianVaultsAsync(maxVaults).then(v => { _obsidianCache = v; }).catch(() => {});
 }
 
 // ── GNOME Settings ───────────────────────────────────────────────────────────
@@ -607,16 +595,22 @@ function unpatchPopupOpen() {
 export default class VSCodeRecentFoldersExtension extends Extension {
     enable() {
         this._settings = this.getSettings();
-        const maxFolders = this._settings.get_int('max-recent-folders');
+        const s = this._settings;
+        const maxFolders = s.get_int('max-recent-folders');
         for (const editor of ['vscode', 'vscodium', 'cursor'])
             fetchRecentFoldersAsync(maxFolders, editor)
-                .then(f => { _folderCaches[editor] = f; })
-                .catch(() => {});
+                .then(f => { _folderCaches[editor] = f; }).catch(() => {});
+        _fetchGitKrakenReposAsync(s.get_int('max-recent-repos'))
+            .then(r => { _gitKrakenCache = r; }).catch(() => {});
+        _fetchObsidianVaultsAsync(s.get_int('max-recent-vaults'))
+            .then(v => { _obsidianCache = v; }).catch(() => {});
         patchPopupOpen(this._settings);
     }
     disable() {
         unpatchPopupOpen();
         for (const k of Object.keys(_folderCaches)) _folderCaches[k] = [];
+        _gitKrakenCache = [];
+        _obsidianCache  = [];
         this._settings = null;
     }
 }
